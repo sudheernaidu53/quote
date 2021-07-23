@@ -1,10 +1,12 @@
 import re
 from typing import Dict, List, Optional
+from better_profanity import profanity
 import warnings
 
 from gazpacho import Soup
 
 URL = "https://www.goodreads.com/quotes/search"
+profanity.load_censor_words()
 
 
 def _make_soup(query: str, page: int = 1) -> Soup:
@@ -13,7 +15,7 @@ def _make_soup(query: str, page: int = 1) -> Soup:
     return soup
 
 
-def _parse_quote(quote_text: Soup, exis_quotes=None) -> Dict[str, str]:
+def _parse_quote(quote_text: Soup, profanity_check=False, exis_quotes=None) -> Dict[str, str]:
     """
     :param quote_text: soup object which contains quotes
     :param exis_quotes: existing quotes. if the quote is present in these, quote is not returned
@@ -24,7 +26,10 @@ def _parse_quote(quote_text: Soup, exis_quotes=None) -> Dict[str, str]:
     a = quote_text.find("span", {"class": "authorOrTitle"}, mode="first")
     q = re.search("(?<=“)(.*?)(?=”)", quote_text.strip())
     quote_ = "" if not q else q.group(0)
-    if quote_ in exis_quotes:
+    if profanity.contains_profanity(quote_):
+        warnings.warn("Following quote is profane {}".format(quote_))
+        return False
+    elif quote_ in exis_quotes:
         warnings.warn("quote already exists: {}".format(quote_))
         return False
     return {
@@ -50,7 +55,7 @@ def _get_page_quotes(soup: Soup, exis_quotes=None) -> List[Dict[str, str]]:
     return quotes
 
 
-def _get_page_quotes_tags(soup: Soup, get_tags, get_likes, length, exis_quotes=None):
+def _get_page_quotes_tags(soup: Soup, get_tags, get_likes, length, profanity=False, exis_quotes=None):
     """
     get quotes, tags and likes corresponding to each quote form a page
     :param soup:
@@ -66,7 +71,7 @@ def _get_page_quotes_tags(soup: Soup, get_tags, get_likes, length, exis_quotes=N
     quotes = []
     for qt in quotes_:
         quote_text = qt.find("div", {"class": "quoteText"}, mode="first")
-        quote = _parse_quote(quote_text, exis_quotes=exis_quotes)
+        quote = _parse_quote(quote_text, profanity, exis_quotes=exis_quotes)
         if quote:
             if get_tags:
                 if qt.find("div", {"class": "greyText smallText left"}, mode="first"):  # there are quotes with no tags.
@@ -85,7 +90,7 @@ def _get_page_quotes_tags(soup: Soup, get_tags, get_likes, length, exis_quotes=N
     return quotes
 
 
-def quote(search: str, limit: int = 20, get_tags=False, get_likes=False, length=800, skip_pages=0, verbose=False, exis_quotes=None) -> \
+def quote(search: str, limit: int = 20, get_tags=False, get_likes=False, length=800, profanity=False, skip_pages=0, verbose=False, exis_quotes=None) -> \
         Optional[List[Dict[str, str]]]:
     """
     Retrieve quotes from Goodreads
@@ -118,7 +123,7 @@ def quote(search: str, limit: int = 20, get_tags=False, get_likes=False, length=
     while len(quotes) < limit:
         try:
             soup = _make_soup(search, page=page)
-            page_quotes = _get_page_quotes_tags(soup, get_tags, get_likes, length,exis_quotes=exis_quotes)
+            page_quotes = _get_page_quotes_tags(soup, get_tags, get_likes, length, profanity, exis_quotes=exis_quotes)
             if page_quotes == False:
                 warnings.warn("Did not generate required amount of quotes. Num quotes: {}".format(len(quotes)))
                 return quotes
